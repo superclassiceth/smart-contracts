@@ -44,9 +44,11 @@ let latestRewardBps = new BN(3000) // 30%
 let latestRebateBps = new BN(2000) // 20%
 let link = web3.utils.fromAscii('https://kyberswap.com')
 
-let NUM_RUNS = 5000
+let NUM_RUNS = 300000
 
-// for keeping score
+// statistic about operation
+// for operation, failing means the generated operation is revert
+// for campaign, failing means the winning option is 0
 let score = {
   deposit: {success: 0, fail: 0},
   delegate: {success: 0, fail: 0},
@@ -99,6 +101,7 @@ contract('KyberDAO simulator', function (accounts) {
       Helper.assertEqual(expectedResult, maxAllowance, 'staker did not give sufficient allowance')
       totalKNC = totalKNC.add(kncTweiDepositAmount)
     }
+    // burn the rest of knc, so the random campaign can be success
     await kncToken.burn(await kncToken.balanceOf(accounts[0]))
 
     Helper.assertEqual(totalKNC, await kncToken.totalSupply(), 'total token in account is not match with total suppy')
@@ -205,6 +208,8 @@ contract('KyberDAO simulator', function (accounts) {
       let beforeStake = await stakingContract.getStake(result.staker, epoch)
       await stakingContract.withdraw(result.amount, {from: result.staker})
       let afterState = await stakingContract.getStake(result.staker, epoch)
+      // if the withdraw only change the stage for the next epoch, not the current one,
+      // the vote data will be unchanged
       if (afterState.lt(beforeStake)) {
         console.log('after stake for current epoch is smaller than before stake, handle withdrawal')
         representative = await stakingContract.getRepresentative(result.staker, epoch)
@@ -326,7 +331,8 @@ contract('KyberDAO simulator', function (accounts) {
           Helper.assertEqual(latestNetworkFee, actualNetworkFeeBps.feeInBps, 'unexpected network fee')
         } else {
           Helper.assertEqual(expectedValue, actualNetworkFeeBps.feeInBps, 'unexpected network fee')
-          //pull network fee to cache
+          // pull network fee to cache
+          // Otherwise if the next epoch has no winning campaign, the change will not be recorded
           await daoContract.getLatestNetworkFeeDataWithCache()
           latestNetworkFee = expectedValue
           console.log('\x1b[36m%s\x1b[0m', `change network fee to ${actualNetworkFeeBps.feeInBps}`)
@@ -349,7 +355,8 @@ contract('KyberDAO simulator', function (accounts) {
           Helper.assertEqual(newRewardBps, actualBrrData.rewardInBps, 'unexpected rewardInBps')
           Helper.assertEqual(newRebateBps, actualBrrData.rebateInBps, 'unexpected rebateInBps')
           Helper.assertEqual(BPS.sub(newRewardBps).sub(newRebateBps), actualBrrData.burnInBps, 'unexpected burnInBps')
-          //pull network fee to cache
+          //pull brr data to cache
+          // Otherwise if the next epoch has no winning campaign, the change will not be recorded
           await daoContract.getLatestBRRDataWithCache()
           latestRewardBps = newRewardBps
           latestRebateBps = newRebateBps
