@@ -154,11 +154,15 @@ contract('KyberDAO simulator', function (accounts) {
     console.log(`Deposit: success = ${score.deposit.success}, fails = ${score.deposit.fail}`)
     console.log(`Delegate: success = ${score.delegate.success}, fails = ${score.delegate.fail}`)
     console.log(`Withdrawals: success = ${score.withdraw.success}, fails = ${score.withdraw.fail}`)
-    console.log(`SubmitNewCampaign: success = ${score.submitNewCampaign.success}, fails = ${score.submitNewCampaign.fail}`)
+    console.log(
+      `SubmitNewCampaign: success = ${score.submitNewCampaign.success}, fails = ${score.submitNewCampaign.fail}`
+    )
     console.log(`CancelCampaign: success = ${score.cancelCampaign.success}, fails = ${score.cancelCampaign.fail}`)
     console.log(`Vote: success = ${score.vote.success}, fails = ${score.vote.fail}`)
     console.log(`Do nothing: success = ${score.noAction.success}, fails = ${score.noAction.fail}`)
-    console.log(`Campaign has winning option: success = ${score.successCampaign.success}, fails = ${score.successCampaign.fail}`)
+    console.log(
+      `Campaign has winning option: success = ${score.successCampaign.success}, fails = ${score.successCampaign.fail}`
+    )
   })
 
   async function deposit (currentBlockTime, epoch) {
@@ -288,7 +292,9 @@ contract('KyberDAO simulator', function (accounts) {
       await daoContract.vote(result.campaignID, result.option, {from: result.staker})
       let stakerData = await stakingContract.getStakerData(result.staker, epoch)
       let totalStake =
-        stakerData.representative == result.staker ? stakerData.stake.add(stakerData.delegatedStake) : stakerData.delegatedStake
+        stakerData.representative == result.staker
+          ? stakerData.stake.add(stakerData.delegatedStake)
+          : stakerData.delegatedStake
       DaoSimulator.vote(result.campaignID, result.option, result.staker, totalStake, epoch)
       await assertEqualCampaignVoteData(daoContract, result.campaignID)
     } else {
@@ -332,7 +338,11 @@ contract('KyberDAO simulator', function (accounts) {
         if (expectedOptionID.eq(new BN(0))) {
           Helper.assertEqual(latestRewardBps, actualBrrData.rewardInBps, 'unexpected rewardInBps')
           Helper.assertEqual(latestRebateBps, actualBrrData.rebateInBps, 'unexpected rebateInBps')
-          Helper.assertEqual(BPS.sub(latestRewardBps).sub(latestRebateBps), actualBrrData.burnInBps, 'unexpected burnInBps')
+          Helper.assertEqual(
+            BPS.sub(latestRewardBps).sub(latestRebateBps),
+            actualBrrData.burnInBps,
+            'unexpected burnInBps'
+          )
         } else {
           let newRebateBps = expectedValue.div(POWER_128)
           let newRewardBps = expectedValue.sub(expectedValue.div(POWER_128).mul(POWER_128))

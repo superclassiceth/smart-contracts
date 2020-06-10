@@ -20,7 +20,15 @@ const MAX_EPOCH_CAMPAIGNS = 10
 const POWER_128 = new BN(2).pow(new BN(128))
 const BRR_OPTIONS = [new BN(2000), new BN(3000).mul(POWER_128), new BN(3000).mul(POWER_128).add(new BN(2000))]
 
-module.exports = {CREATE_CAMPAIGN, CANCEL_CAMPAIGN, VOTE, CLAIM_REWARD, CAMPAIGN_TYPE_GENERAL, CAMPAIGN_TYPE_NETWORK_FEE, CAMPAIGN_TYPE_FEE_BRR}
+module.exports = {
+  CREATE_CAMPAIGN,
+  CANCEL_CAMPAIGN,
+  VOTE,
+  CLAIM_REWARD,
+  CAMPAIGN_TYPE_GENERAL,
+  CAMPAIGN_TYPE_NETWORK_FEE,
+  CAMPAIGN_TYPE_FEE_BRR
+}
 
 module.exports.genNextOp = function genNextOp (loop, numRuns) {
   let rand = genRandomSeed(7, BASE)
