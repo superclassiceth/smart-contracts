@@ -38,7 +38,7 @@ const POWER_128 = new BN(2).pow(new BN(128))
 //dao-related variable
 let startTime
 let epochPeriod = 500 // each iteration we add 10s -> each epoch is about 50 iterations
-let minCampPeriod = 50
+let minCampPeriod = 0
 let latestNetworkFee = 25
 let latestRewardBps = new BN(3000) // 30%
 let latestRebateBps = new BN(2000) // 20%

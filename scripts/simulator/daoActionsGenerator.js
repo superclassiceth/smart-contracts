@@ -72,28 +72,66 @@ module.exports.genNextOp = function genNextOp (loop, numRuns) {
 
 module.exports.genSubmitNewCampaign = async (daoContract, epochPeriod, startTime, currentBlockTime, epoch) => {
   rand = genRandomSeed(32, 100)
-  // let currentBlockTime = (await Helper.getCurrentBlockTime()) + 10
-  // let epoch = getEpochNumber(epochPeriod, startTime, currentBlockTime)
-  let startTimestamp = genRandomBN(new BN(currentBlockTime), new BN(startTime + epochPeriod * epoch + epochPeriod / 2))
+  // create startTimestamp = [startEpoch, startEpoch + epochPeriod * 2.5]
+  let startTimestamp = genRandomBN(
+    new BN(startTime + epochPeriod * epoch),
+    new BN(startTime + epochPeriod * epoch * 2 + epochPeriod / 2)
+  )
 
   let startEpoch = getEpochNumber(epochPeriod, startTime, startTimestamp)
   let listCampaignIDs = await daoContract.getListCampaignIDs(startEpoch)
   if (listCampaignIDs.length == MAX_EPOCH_CAMPAIGNS) {
-    console.log('number campaign is max, skipping submitNewCampaign')
-    return undefined
+    return {
+      campaignType: CAMPAIGN_TYPE_GENERAL,
+      startTimestamp: currentBlockTime,
+      endTimestamp: currentBlockTime + 1,
+      minPercentageInPrecision: precision,
+      cInPrecision: precision,
+      tInPrecision: precision,
+      options: [new BN(1), new BN(2)],
+      isValid: false,
+      msg: 'validateParams: too many campaigns'
+    }
   }
 
   if (rand >= 97) {
+    // test create campaign startTime < endTime
     return {
       campaignType: CAMPAIGN_TYPE_GENERAL,
-      startTimestamp: currentBlockTime - 1,
+      startTimestamp: currentBlockTime,
       endTimestamp: currentBlockTime - 1,
       minPercentageInPrecision: precision,
       cInPrecision: precision,
       tInPrecision: precision,
       options: [new BN(1), new BN(2)],
       isValid: false,
-      msg: "validateParams: can't start in the past"
+      msg: 'validateParams: campaign duration is low'
+    }
+  } else if (rand >= 94) {
+    // test create campaign at epoch + 2
+    return {
+      campaignType: CAMPAIGN_TYPE_GENERAL,
+      startTimestamp: new BN(startTime + epochPeriod * epoch * 2),
+      endTimestamp: new BN(startTime + epochPeriod * epoch * 2 + 1),
+      minPercentageInPrecision: precision,
+      cInPrecision: precision,
+      tInPrecision: precision,
+      options: [new BN(1), new BN(2)],
+      isValid: false,
+      msg: 'validateParams: only for current or next epochs'
+    }
+  } else if (rand >= 90) {
+    // test create campaign options.length > MAX_CAMPAIGN_OPTIONS
+    return {
+      campaignType: CAMPAIGN_TYPE_GENERAL,
+      startTimestamp: currentBlockTime,
+      endTimestamp: currentBlockTime,
+      minPercentageInPrecision: precision,
+      cInPrecision: precision,
+      tInPrecision: precision,
+      options: [new BN(1), new BN(2), new BN(3), new BN(4), new BN(5), new BN(6), new BN(7), new BN(8), new BN(9)],
+      isValid: false,
+      msg: 'validateParams: invalid number of options'
     }
   }
 
@@ -110,9 +148,23 @@ module.exports.genSubmitNewCampaign = async (daoContract, epochPeriod, startTime
     isValid: true,
     msg: 'create general campaign at epoch ' + startEpoch
   }
+  // test create campaign at the past
+  if (startTimestamp.lt(new BN(currentBlockTime))) {
+    result.isValid = false
+    result.msg = 'validateParams: start in the past'
+    return result
+  }
+
   if (!startEpoch.eq(endEpoch)) {
     result.isValid = false
     result.msg = 'validateParams: start & end not same epoch'
+    return result
+  }
+
+  if (startEpoch.gt(epoch.add(new BN(1)))) {
+    console.log('ddddddd')
+    result.isValid = false
+    result.msg = 'validateParams: only for current or next epochs'
     return result
   }
   // minPercentageInPrecision is random (0, precision/5)
@@ -155,11 +207,12 @@ function getEpochNumber (epochPeriod, startTime, timestamp) {
     .add(new BN(1))
 }
 
-// random select a campaignID from current epoch
+// random select a campaignID from current epoch or next epoch
 module.exports.genCancelCampaign = async (daoContract, currentBlockTime, epoch) => {
   let campaigns = await daoContract.getListCampaignIDs(epoch)
+  campaigns = campaigns.concat(await daoContract.getListCampaignIDs(epoch.add(new BN(1))))
   if (campaigns.length == 0) {
-    console.log(`there is no campain in epoch ${epoch} to cancel`)
+    console.log(`there is no campain in epoch ${epoch} and epch ${epoch.add(new BN(1))} to cancel`)
     return undefined
   }
   let campaignID = campaigns[genRandomSeed(32, campaigns.length)]
@@ -184,20 +237,26 @@ module.exports.genCancelCampaign = async (daoContract, currentBlockTime, epoch) 
 // random select a campaign ID from this epoch and select random option
 module.exports.genVote = async (daoContract, currentBlockTime, epoch, stakers) => {
   let campaigns = await daoContract.getListCampaignIDs(epoch)
+  let staker = stakers[genRandomSeed(32, stakers.length)]
   if (campaigns.length == 0) {
     console.log(`there is no campain in epoch ${epoch} to vote`)
-    return undefined
+    numCampaign = await daoContract.numberCampaigns()
+    return {
+      staker,
+      campaignID: new BN(numCampaign).add(new BN(2)),
+      option: new BN(1),
+      isValid: false,
+      msg: "vote: campaign doesn't exist"
+    }
   }
   let campaignID = campaigns[genRandomSeed(32, campaigns.length)]
   let campaignDetails = await daoContract.getCampaignDetails(campaignID)
 
-  let staker = stakers[genRandomSeed(32, stakers.length)]
-
-  let option = genRandomSeed(32, campaignDetails.options.length)
+  let option = genRandomSeed(32, campaignDetails.options.length + 2)
   let result = {
     staker,
     campaignID,
-    option: new BN(option + 1),
+    option: new BN(option),
     isValid: true,
     msg: ''
   }
@@ -213,6 +272,18 @@ module.exports.genVote = async (daoContract, currentBlockTime, epoch, stakers) =
     return result
   }
 
-  result.msg = `success campaignID=${campaignID} option=${option + 1}`
+  if (option === 0) {
+    result.isValid = false
+    result.msg = 'vote: option is 0'
+    return result
+  }
+
+  if (option === campaignDetails.options.length + 1) {
+    result.isValid = false
+    result.msg = 'vote: option is not in range'
+    return result
+  }
+
+  result.msg = `success campaignID=${campaignID} option=${option}`
   return result
 }
