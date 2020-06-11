@@ -3,12 +3,12 @@ const {zeroBN, zeroAddress} = require('../../test/helper.js')
 const Helper = require('../../test/helper.js')
 
 const {DEPOSIT, DELEGATE, WITHDRAW, NO_ACTION} = require('./stakingActionsGenerator.js')
-const {BASE, genRandomBN, genRandomSeed} = require('./generatorHelper.js')
+const {BASE, genRandomBN, genRandomNumber} = require('./generatorHelper.js')
 
 const CREATE_CAMPAIGN = 'submit_new_campaign'
 const CANCEL_CAMPAIGN = 'cancel_campaign'
 const VOTE = 'vote'
-const CLAIM_REWARD = 'claim_reward'
+const GET_REWARD = 'get_reward'
 
 const CAMPAIGN_TYPE_GENERAL = 0
 const CAMPAIGN_TYPE_NETWORK_FEE = 1
@@ -24,14 +24,14 @@ module.exports = {
   CREATE_CAMPAIGN,
   CANCEL_CAMPAIGN,
   VOTE,
-  CLAIM_REWARD,
+  GET_REWARD,
   CAMPAIGN_TYPE_GENERAL,
   CAMPAIGN_TYPE_NETWORK_FEE,
   CAMPAIGN_TYPE_FEE_BRR
 }
 
 module.exports.genNextOp = function genNextOp (loop, numRuns) {
-  let rand = genRandomSeed(7, BASE)
+  let rand = genRandomNumber(BASE)
   let depositWeight
   let withdrawWeight
   let delegateWeight
@@ -62,7 +62,7 @@ module.exports.genNextOp = function genNextOp (loop, numRuns) {
   if (rand < createCampaignWeight) return CREATE_CAMPAIGN
   if (rand < cancelCampaignWeight) return CANCEL_CAMPAIGN
   if (rand < voteWeight) return VOTE
-  if (rand < claimReward) return CLAIM_REWARD
+  if (rand < claimReward) return GET_REWARD
 
   return NO_ACTION
 }
@@ -71,12 +71,18 @@ module.exports.genNextOp = function genNextOp (loop, numRuns) {
 // not random - start-end epoch, campaign period, epoch-option, tInPrecision, options
 
 module.exports.genSubmitNewCampaign = async (daoContract, epochPeriod, startTime, currentBlockTime, epoch) => {
-  rand = genRandomSeed(32, 100)
-  // create startTimestamp = [startEpoch, startEpoch + epochPeriod * 2.5]
+  rand = genRandomNumber(100)
+  // create startTimestamp = [startEpoch, startEpoch + epochPeriod * 1.5]
   let startTimestamp = genRandomBN(
-    new BN(startTime + epochPeriod * epoch),
-    new BN(startTime + epochPeriod * epoch * 2 + epochPeriod / 2)
+    new BN(startTime + epochPeriod * (epoch - 1)),
+    new BN(startTime + epochPeriod * epoch + epochPeriod / 2)
   )
+  if (rand >= 98) {
+    startTimestamp = genRandomBN(
+      new BN(startTime + epochPeriod * epoch + epochPeriod * 2),
+      new BN(startTime + epochPeriod * epoch + (epochPeriod * 3) / 2)
+    )
+  }
 
   let startEpoch = getEpochNumber(epochPeriod, startTime, startTimestamp)
   let listCampaignIDs = await daoContract.getListCampaignIDs(startEpoch)
@@ -94,12 +100,14 @@ module.exports.genSubmitNewCampaign = async (daoContract, epochPeriod, startTime
     }
   }
 
-  if (rand >= 97) {
+  if (rand >= 96) {
+    // Note: when minCampaignPeriod is 0 then endTimestamp can be startTimestamp - 1
+    // pls review the condition: endTimestamp - startTimestamp + 1 >= minCampaignDurationInSeconds
     // test create campaign startTime < endTime
     return {
       campaignType: CAMPAIGN_TYPE_GENERAL,
       startTimestamp: currentBlockTime,
-      endTimestamp: currentBlockTime - 1,
+      endTimestamp: currentBlockTime - 2,
       minPercentageInPrecision: precision,
       cInPrecision: precision,
       tInPrecision: precision,
@@ -108,19 +116,6 @@ module.exports.genSubmitNewCampaign = async (daoContract, epochPeriod, startTime
       msg: 'validateParams: campaign duration is low'
     }
   } else if (rand >= 94) {
-    // test create campaign at epoch + 2
-    return {
-      campaignType: CAMPAIGN_TYPE_GENERAL,
-      startTimestamp: new BN(startTime + epochPeriod * epoch * 2),
-      endTimestamp: new BN(startTime + epochPeriod * epoch * 2 + 1),
-      minPercentageInPrecision: precision,
-      cInPrecision: precision,
-      tInPrecision: precision,
-      options: [new BN(1), new BN(2)],
-      isValid: false,
-      msg: 'validateParams: only for current or next epochs'
-    }
-  } else if (rand >= 90) {
     // test create campaign options.length > MAX_CAMPAIGN_OPTIONS
     return {
       campaignType: CAMPAIGN_TYPE_GENERAL,
@@ -162,39 +157,82 @@ module.exports.genSubmitNewCampaign = async (daoContract, epochPeriod, startTime
   }
 
   if (startEpoch.gt(epoch.add(new BN(1)))) {
-    console.log('ddddddd')
     result.isValid = false
     result.msg = 'validateParams: only for current or next epochs'
     return result
   }
+  // normal case:
   // minPercentageInPrecision is random (0, precision/5)
-  result.minPercentageInPrecision = genRandomBN(new BN(0), precision.div(new BN(5)))
-  result.cInPrecision = genRandomBN(result.minPercentageInPrecision, precision.div(new BN(2)))
-  result.tInPrecision = precision
-  if (rand < 33) {
+  // cInPrecision (minPercentage, precision/2)
+  // tInPrecision = precision
+  if (rand >= 90) {
+    result.minPercentageInPrecision = genRandomBN(precision.add(new BN(1)), precision.mul(new BN(2)))
+    result.isValid = false
+    result.msg = 'validateParams: min percentage is high'
+    return result
+  } else {
+    result.minPercentageInPrecision = genRandomBN(new BN(0), precision.div(new BN(5)))
+  }
+  if (rand >= 88) {
+    result.cInPrecision = POWER_128
+    result.isValid = false
+    result.msg = 'validateParams: c is high'
+    return result
+  } else {
+    result.cInPrecision = genRandomBN(result.minPercentageInPrecision, precision.div(new BN(2)))
+  }
+  if (rand >= 86) {
+    result.tInPrecision = POWER_128
+    result.isValid = false
+    result.msg = 'validateParams: t is high'
+    return result
+  } else {
+    result.tInPrecision = precision
+  }
+
+  let validOption = genRandomNumber(100) <= 97
+  if (rand < 30) {
     result.campaignType = CAMPAIGN_TYPE_NETWORK_FEE
-    result.options = [new BN(0), new BN(200), new BN(4999)]
+    lastOption = genRandomBN(new BN(1000), new BN(5500))
+    result.options = [new BN(0), new BN(200), lastOption]
     campID = await daoContract.networkFeeCampaigns(startEpoch)
     if (!new BN(campID).eq(new BN(0))) {
       console.log('already have campID ' + campID + ' for epoch' + startEpoch)
       result.isValid = false
       result.msg = 'validateParams: already had network fee campaign for this epoch'
     } else {
-      result.msg = 'create network fee campaign at epoch ' + startEpoch
+      if (lastOption.gt(new BN(4999))) {
+        result.isValid = false
+        result.msg = 'validateParams: network fee must be smaller then BPS / 2'
+      } else {
+        result.msg = 'create network fee campaign at epoch ' + startEpoch
+      }
     }
-  } else if (rand < 66) {
+  } else if (rand < 60) {
     result.campaignType = CAMPAIGN_TYPE_FEE_BRR
-    result.options = BRR_OPTIONS
     campID = await daoContract.brrCampaigns(startEpoch)
+    lastRewardInBps = genRandomBN(new BN(0), new BN(8000))
+    result.options = [new BN(2000), new BN(3000).mul(POWER_128), new BN(3000).mul(POWER_128).add(lastRewardInBps)]
+
     if (!new BN(campID).eq(new BN(0))) {
       console.log('already have campID ' + campID + ' for epoch' + startEpoch)
       result.isValid = false
       result.msg = 'validateParams: already had brr campaign for this epoch'
     } else {
-      result.msg = 'create new brr campaign at epoch ' + startEpoch
+      if (lastRewardInBps.gt(new BN(7000))) {
+        result.isValid = false
+        result.msg = 'validateParams: rebate + reward must be smaller then BPS'
+      } else {
+        result.msg = 'create new brr campaign at epoch ' + startEpoch
+      }
+    }
+  } else {
+    if (!validOption) {
+      result.options = [new BN(0), new BN(1), new BN(2)]
+      result.isValid = false
+      result.msg = 'validateParams: general campaign option is 0'
     }
   }
-
   return result
 }
 
@@ -215,7 +253,7 @@ module.exports.genCancelCampaign = async (daoContract, currentBlockTime, epoch) 
     console.log(`there is no campain in epoch ${epoch} and epch ${epoch.add(new BN(1))} to cancel`)
     return undefined
   }
-  let campaignID = campaigns[genRandomSeed(32, campaigns.length)]
+  let campaignID = campaigns[genRandomNumber(campaigns.length)]
   let campaignDetails = await daoContract.getCampaignDetails(campaignID)
   if (campaignDetails.startTimestamp <= currentBlockTime) {
     return {
@@ -237,22 +275,26 @@ module.exports.genCancelCampaign = async (daoContract, currentBlockTime, epoch) 
 // random select a campaign ID from this epoch and select random option
 module.exports.genVote = async (daoContract, currentBlockTime, epoch, stakers) => {
   let campaigns = await daoContract.getListCampaignIDs(epoch)
-  let staker = stakers[genRandomSeed(32, stakers.length)]
+  let staker = stakers[genRandomNumber(stakers.length)]
   if (campaigns.length == 0) {
     console.log(`there is no campain in epoch ${epoch} to vote`)
-    numCampaign = await daoContract.numberCampaigns()
-    return {
-      staker,
-      campaignID: new BN(numCampaign).add(new BN(2)),
-      option: new BN(1),
-      isValid: false,
-      msg: "vote: campaign doesn't exist"
+    if (genRandomNumber(100) >= 90) {
+      numCampaign = await daoContract.numberCampaigns()
+      return {
+        staker,
+        campaignID: new BN(numCampaign).add(new BN(2)),
+        option: new BN(1),
+        isValid: false,
+        msg: "vote: campaign doesn't exist"
+      }
     }
+    // returns undefined so simulater will genVote instead
+    return undefined
   }
-  let campaignID = campaigns[genRandomSeed(32, campaigns.length)]
+  let campaignID = campaigns[genRandomNumber(campaigns.length)]
   let campaignDetails = await daoContract.getCampaignDetails(campaignID)
 
-  let option = genRandomSeed(32, campaignDetails.options.length + 2)
+  let option = genRandomNumber(campaignDetails.options.length + 2)
   let result = {
     staker,
     campaignID,

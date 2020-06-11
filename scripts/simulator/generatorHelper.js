@@ -1,12 +1,16 @@
 const BN = web3.utils.BN
 const BASE = 100 // base for weighted operations
 
+function genRandomNumber (base) {
+  return Math.floor(Math.random() * base)
+}
+
 function genRandomSeed (length, base) {
   return web3.utils.randomHex(length) % base
 }
 
 function genRandomBN (minBN, maxBN) {
-  let seed = new BN(genRandomSeed(32, 1000000000000000))
+  let seed = new BN(genRandomNumber(1000000000000000))
   // normalise seed
   return maxBN
     .sub(minBN)
@@ -15,4 +19,4 @@ function genRandomBN (minBN, maxBN) {
     .add(minBN)
 }
 
-module.exports = { BASE, genRandomBN, genRandomSeed}
+module.exports = {BASE, genRandomNumber, genRandomBN}

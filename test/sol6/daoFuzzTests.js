@@ -2,26 +2,25 @@ const TestToken = artifacts.require('TestToken.sol')
 const DAOContract = artifacts.require('MockKyberDaoMoreGetters.sol')
 // using mock contract here, as we need to read the hasInited value
 const KyberStaking = artifacts.require('KyberStaking.sol')
-const MockFeeHandler = artifacts.require('MockFeeHandlerNoContructor.sol')
 
-const Helper = require('../test/helper.js')
-const {precisionUnits, zeroBN, zeroAddress, BPS} = require('../test/helper.js')
+const Helper = require('../helper.js')
+const {precisionUnits, zeroBN, zeroAddress, BPS} = require('../helper.js')
 const BN = web3.utils.BN
 const {expectRevert} = require('@openzeppelin/test-helpers')
-const {DEPOSIT, DELEGATE, WITHDRAW, NO_ACTION} = require('./simulator/stakingActionsGenerator.js')
+const {DEPOSIT, DELEGATE, WITHDRAW, NO_ACTION} = require('../../scripts/simulator/stakingActionsGenerator.js')
 const {
   CREATE_CAMPAIGN,
   CANCEL_CAMPAIGN,
-  CLAIM_REWARD,
+  GET_REWARD,
   VOTE,
   CAMPAIGN_TYPE_GENERAL,
   CAMPAIGN_TYPE_NETWORK_FEE,
   CAMPAIGN_TYPE_FEE_BRR
-} = require('./simulator/daoActionsGenerator.js')
+} = require('../../scripts/simulator/daoActionsGenerator.js')
 
-const DaoSimulator = require('./simulator/simulator_dao.js')
-const StakeGenerator = require('./simulator/stakingActionsGenerator.js')
-const DaoGenerator = require('./simulator/daoActionsGenerator.js')
+const DaoSimulator = require('../../scripts/simulator/simulator_dao.js')
+const StakeGenerator = require('../../scripts/simulator/stakingActionsGenerator.js')
+const DaoGenerator = require('../../scripts/simulator/daoActionsGenerator.js')
 
 let kncToken
 let tokenDecimals = new BN(18)
@@ -44,7 +43,8 @@ let latestRewardBps = new BN(3000) // 30%
 let latestRebateBps = new BN(2000) // 20%
 let link = web3.utils.fromAscii('https://kyberswap.com')
 
-let NUM_RUNS = 300000
+let NUM_RUNS = 250
+// let NUM_RUNS = 5000
 
 // statistic about operation
 // for operation, failing means the generated operation is revert
@@ -73,8 +73,6 @@ contract('KyberDAO simulator', function (accounts) {
     firstBlockTimestamp = await Helper.getCurrentBlockTime()
 
     startTime = (await firstBlockTimestamp) + 10
-
-    feeHandler = await MockFeeHandler.new()
 
     daoContract = await DAOContract.new(
       epochPeriod,
@@ -117,6 +115,7 @@ contract('KyberDAO simulator', function (accounts) {
       if (!nextEpoch.eq(currentEpoch)) {
         await Helper.mineNewBlockAt(currentBlockTime)
         await checkWinningCampaign(daoContract, currentBlockTime, currentEpoch)
+        await checkAllStakerReward(daoContract, stakingContract, stakers, currentEpoch, false)
         currentEpoch = nextEpoch
         continue
       }
@@ -140,6 +139,9 @@ contract('KyberDAO simulator', function (accounts) {
           break
         case VOTE:
           await vote(currentBlockTime, currentEpoch)
+          break
+        case GET_REWARD:
+          await checkAllStakerReward(daoContract, stakingContract, stakers, currentEpoch, true)
           break
         case NO_ACTION:
           console.log('do nothing for this epoch...')
@@ -179,7 +181,7 @@ contract('KyberDAO simulator', function (accounts) {
     if (result.isValid) {
       await stakingContract.deposit(result.amount, {from: result.staker})
       // check that deposit does not affect dao data
-      await assertEqualEpochVoteDatas(daoContract, epoch)
+      await assertEqualEpochVoteData(daoContract, epoch)
     } else {
       await expectRevert.unspecified(stakingContract.deposit(result.amount, {from: result.staker}))
     }
@@ -194,7 +196,7 @@ contract('KyberDAO simulator', function (accounts) {
     await Helper.setNextBlockTimestamp(currentBlockTime)
     await stakingContract.delegate(result.dAddress, {from: result.staker})
     // check that delegate does not affect dao data
-    await assertEqualEpochVoteDatas(daoContract, epoch)
+    await assertEqualEpochVoteData(daoContract, epoch)
     score.delegate = incrementScoreCount(true, score.delegate)
   }
 
@@ -213,10 +215,10 @@ contract('KyberDAO simulator', function (accounts) {
       if (afterState.lt(beforeStake)) {
         console.log('after stake for current epoch is smaller than before stake, handle withdrawal')
         representative = await stakingContract.getRepresentative(result.staker, epoch)
-        await DaoSimulator.handlewithdraw(representative, beforeStake.sub(afterState), epoch, currentBlockTime)
+        DaoSimulator.handlewithdraw(representative, beforeStake.sub(afterState), epoch, currentBlockTime)
       }
       // assert campaignVoteData match for both cases: handle withdraw or not
-      await assertEqualEpochVoteDatas(daoContract, epoch)
+      await assertEqualEpochVoteData(daoContract, epoch)
     } else {
       await expectRevert.unspecified(stakingContract.withdraw(result.amount, {from: result.staker}))
     }
@@ -366,9 +368,47 @@ contract('KyberDAO simulator', function (accounts) {
       score.successCampaign = incrementScoreCount(!data.optionID.eq(new BN(0)), score.successCampaign)
     }
   }
+
+  async function checkAllStakerReward (daoContract, stakingContract, stakers, epoch, isCurrentOrPastEpoch) {
+    let totalPoint = new BN(0)
+    let actualTotalPoint = await daoContract.getTotalEpochPoints(epoch)
+    let simulatedTotalPoint = DaoSimulator.getTotalEpochPoints(epoch)
+    Helper.assertEqual(actualTotalPoint, simulatedTotalPoint, 'unexpected total points')
+    for (let i = 0; i < stakers.length; i++) {
+      staker = stakers[i]
+      if (isCurrentOrPastEpoch) {
+        rewardPercentage = await daoContract.getCurrentEpochRewardPercentageInPrecision(staker)
+      } else {
+        rewardPercentage = await daoContract.getPastEpochRewardPercentageInPrecision(staker, epoch)
+      }
+      let numVotes = DaoSimulator.getStakerVoteCount(staker, epoch)
+
+      if (numVotes.eq(zeroBN)) {
+        Helper.assertEqual(rewardPercentage, zeroBN, 'rewardPercentage should be zero')
+        continue
+      }
+      // here we use getStakerData instead of getStakerRawData to avoid data is not init
+      stakerData = await stakingContract.getStakerData(staker, epoch)
+      let totalStake =
+        stakerData.representative == staker
+          ? stakerData.stake.add(stakerData.delegatedStake)
+          : stakerData.delegatedStake
+      totalPoint = totalPoint.add(numVotes.mul(totalStake))
+      if (totalPoint.eq(zeroBN)) {
+        Helper.assertEqual(rewardPercentage, zeroBN, 'rewardPercentage should be zero')
+        continue
+      }
+      let expectedRewardPercentage = numVotes
+        .mul(totalStake)
+        .mul(precisionUnits)
+        .div(new BN(actualTotalPoint))
+      Helper.assertEqual(rewardPercentage, expectedRewardPercentage, 'unexpected reward percentage')
+    }
+    Helper.assertEqual(totalPoint, simulatedTotalPoint, 'total point from each staker should match')
+  }
 })
 
-async function assertEqualEpochVoteDatas (daoContract, epoch) {
+async function assertEqualEpochVoteData (daoContract, epoch) {
   let campaignIDs = await daoContract.getListCampaignIDs(epoch)
   for (const campaignID of campaignIDs) {
     await assertEqualCampaignVoteData(daoContract, campaignID)

@@ -1,6 +1,6 @@
 const BN = web3.utils.BN
 const Helper = require('../../test/helper.js')
-const {precisionUnits} = require('../../test/helper.js')
+const {precisionUnits, zeroBN} = require('../../test/helper.js')
 
 const {
   getEpochNumber,
@@ -190,7 +190,7 @@ function subValueToDictionay (dic, key, value) {
   }
 }
 
-module.exports.handlewithdraw = async function (staker, reduceAmount, epoch, currentBlockTime) {
+module.exports.handlewithdraw = function (staker, reduceAmount, epoch, currentBlockTime) {
   if (!(staker in numberVotes)) return
   if (!(epoch in numberVotes[staker])) return
   //if numberVotes contains value for state and epoch, that mean numVotes!=0
@@ -215,4 +215,15 @@ module.exports.handlewithdraw = async function (staker, reduceAmount, epoch, cur
       votedOption.sub(new BN(1))
     ].sub(reduceAmount)
   }
+}
+
+module.exports.getStakerVoteCount = function (staker, epoch, totalStake) {
+  if (!(staker in numberVotes)) return zeroBN
+  if (!(epoch in numberVotes[staker])) return zeroBN
+  return numberVotes[staker][epoch]
+}
+
+module.exports.getTotalEpochPoints = function (epoch) {
+  if (!(epoch in totalEpochPoints)) return zeroBN
+  return totalEpochPoints[epoch]
 }
