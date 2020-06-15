@@ -319,10 +319,7 @@ contract('KyberDAO simulator', function (accounts) {
     console.log('\x1b[36m%s\x1b[0m', 'CheckWinningCampaign')
     for (const campaignID of campaignIDs) {
       let data = await daoContract.getCampaignWinningOptionAndValue(campaignID)
-      let [expectedOptionID, expectedValue, campaignType] = DaoSimulator.getCampaignWinningOptionAndValue(
-        campaignID,
-        currentBlockTime
-      )
+      let [expectedOptionID, expectedValue, campaignType] = DaoSimulator.getCampaignWinningOptionAndValue(campaignID)
       console.log(`campaign ID=${campaignID} optionID=${expectedOptionID} value=${expectedValue}`)
       Helper.assertEqual(data.optionID, expectedOptionID, 'unexpected option ID')
       Helper.assertEqual(data.value, expectedValue, 'unexpected option ID')

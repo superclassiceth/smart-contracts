@@ -77,65 +77,14 @@ module.exports.genSubmitNewCampaign = async (daoContract, epochPeriod, startTime
     new BN(startTime + epochPeriod * (epoch - 1)),
     new BN(startTime + epochPeriod * epoch + epochPeriod / 2)
   )
-  if (rand >= 98) {
-    startTimestamp = genRandomBN(
-      new BN(startTime + epochPeriod * epoch + epochPeriod * 2),
-      new BN(startTime + epochPeriod * epoch + (epochPeriod * 3) / 2)
-    )
+  if (genRandomNumber(100) >= 98) {
+    startTimestamp = genRandomBN(new BN(startTime), new BN(startTime + epochPeriod * epoch * 2))
   }
-
   let startEpoch = getEpochNumber(epochPeriod, startTime, startTimestamp)
-  let listCampaignIDs = await daoContract.getListCampaignIDs(startEpoch)
-  if (listCampaignIDs.length == MAX_EPOCH_CAMPAIGNS) {
-    return {
-      campaignType: CAMPAIGN_TYPE_GENERAL,
-      startTimestamp: currentBlockTime,
-      endTimestamp: currentBlockTime + 1,
-      minPercentageInPrecision: precision,
-      cInPrecision: precision,
-      tInPrecision: precision,
-      options: [new BN(1), new BN(2)],
-      isValid: false,
-      msg: 'validateParams: too many campaigns'
-    }
-  }
-
-  if (rand >= 96) {
-    // Note: when minCampaignPeriod is 0 then endTimestamp can be startTimestamp - 1
-    // pls review the condition: endTimestamp - startTimestamp + 1 >= minCampaignDurationInSeconds
-    // test create campaign startTime < endTime
-    return {
-      campaignType: CAMPAIGN_TYPE_GENERAL,
-      startTimestamp: currentBlockTime,
-      endTimestamp: currentBlockTime - 2,
-      minPercentageInPrecision: precision,
-      cInPrecision: precision,
-      tInPrecision: precision,
-      options: [new BN(1), new BN(2)],
-      isValid: false,
-      msg: 'validateParams: campaign duration is low'
-    }
-  } else if (rand >= 94) {
-    // test create campaign options.length > MAX_CAMPAIGN_OPTIONS
-    return {
-      campaignType: CAMPAIGN_TYPE_GENERAL,
-      startTimestamp: currentBlockTime,
-      endTimestamp: currentBlockTime,
-      minPercentageInPrecision: precision,
-      cInPrecision: precision,
-      tInPrecision: precision,
-      options: [new BN(1), new BN(2), new BN(3), new BN(4), new BN(5), new BN(6), new BN(7), new BN(8), new BN(9)],
-      isValid: false,
-      msg: 'validateParams: invalid number of options'
-    }
-  }
-
-  let endTimestamp = startTimestamp.add(new BN(epochPeriod / 2))
-  let endEpoch = getEpochNumber(epochPeriod, startTime, endTimestamp)
   let result = {
     campaignType: CAMPAIGN_TYPE_GENERAL,
     startTimestamp: startTimestamp,
-    endTimestamp: startTimestamp.add(new BN(epochPeriod / 2)),
+    endTimestamp: startTimestamp + 1,
     minPercentageInPrecision: precision,
     cInPrecision: precision,
     tInPrecision: precision,
@@ -145,11 +94,31 @@ module.exports.genSubmitNewCampaign = async (daoContract, epochPeriod, startTime
   }
   // test create campaign at the past
   if (startTimestamp.lt(new BN(currentBlockTime))) {
-    result.isValid = false
     result.msg = 'validateParams: start in the past'
+    result.isValid = false
+    return result
+  }
+  // generate random where campaign endTimestamp is small
+  if(genRandomNumber(100) >= 98) {
+    // Note: when minCampaignPeriod is 0 then endTimestamp can be startTimestamp - 1
+    // pls review the condition: endTimestamp - startTimestamp + 1 >= minCampaignDurationInSeconds
+    // test create campaign startTime < endTime
+    result.msg = 'validateParams: campaign duration is low'
+    result.endTimestamp = currentBlockTime - 2 - genRandomNumber(100)
+    result.isValid = false
+    return result
+  }
+  // check number of campaign in this epoch
+  let listCampaignIDs = await daoContract.getListCampaignIDs(startEpoch)
+  if (listCampaignIDs.length == MAX_EPOCH_CAMPAIGNS) {
+    result.msg = 'validateParams: too many campaigns'
+    result.isValid = false
     return result
   }
 
+  let endTimestamp = startTimestamp.add(new BN(epochPeriod / 2))
+  let endEpoch = getEpochNumber(epochPeriod, startTime, endTimestamp)
+  result.endTimestamp = endTimestamp
   if (!startEpoch.eq(endEpoch)) {
     result.isValid = false
     result.msg = 'validateParams: start & end not same epoch'
@@ -159,6 +128,17 @@ module.exports.genSubmitNewCampaign = async (daoContract, epochPeriod, startTime
   if (startEpoch.gt(epoch.add(new BN(1)))) {
     result.isValid = false
     result.msg = 'validateParams: only for current or next epochs'
+    return result
+  }
+  // test create campaign options.length > MAX_CAMPAIGN_OPTIONS
+  if (genRandomNumber(100) >= 98) {
+    options = []
+    for(let i =0; i< 9;i++ ){
+      options.push(1 + genRandomNumber(20))
+    }
+    result.msg = 'validateParams: invalid number of options'
+    result.options = options
+    result.isValid = false
     return result
   }
   // normal case:
@@ -174,7 +154,7 @@ module.exports.genSubmitNewCampaign = async (daoContract, epochPeriod, startTime
     result.minPercentageInPrecision = genRandomBN(new BN(0), precision.div(new BN(5)))
   }
   if (rand >= 88) {
-    result.cInPrecision = POWER_128
+    result.cInPrecision = genRandomBN(POWER_128, POWER_128.mul(new BN(2)))
     result.isValid = false
     result.msg = 'validateParams: c is high'
     return result
@@ -182,7 +162,7 @@ module.exports.genSubmitNewCampaign = async (daoContract, epochPeriod, startTime
     result.cInPrecision = genRandomBN(result.minPercentageInPrecision, precision.div(new BN(2)))
   }
   if (rand >= 86) {
-    result.tInPrecision = POWER_128
+    result.tInPrecision = genRandomBN(POWER_128, POWER_128.mul(new BN(2)))
     result.isValid = false
     result.msg = 'validateParams: t is high'
     return result
@@ -254,6 +234,20 @@ module.exports.genCancelCampaign = async (daoContract, currentBlockTime, epoch) 
     return undefined
   }
   let campaignID = campaigns[genRandomNumber(campaigns.length)]
+  let numCampaign = await daoContract.numberCampaigns()
+  // with a small possibility, random campaignID in a range from [1, numberCampaign * 1.5]
+  if (genRandomNumber(100) >= 90) {
+    campaignID = genRandomNumber(0, numCampaign * 1.5)
+  }
+  if (campaignID === 0 || campaignID > numCampaign.toNumber()) {
+    return {
+      blockTime: currentBlockTime,
+      isValid: false,
+      msg: "cancelCampaign: campaignID doesn't exist",
+      campaignID
+    }
+  }
+
   let campaignDetails = await daoContract.getCampaignDetails(campaignID)
   if (campaignDetails.startTimestamp <= currentBlockTime) {
     return {
@@ -294,7 +288,7 @@ module.exports.genVote = async (daoContract, currentBlockTime, epoch, stakers) =
   let campaignID = campaigns[genRandomNumber(campaigns.length)]
   let campaignDetails = await daoContract.getCampaignDetails(campaignID)
 
-  let option = genRandomNumber(campaignDetails.options.length + 2)
+  let option = genRandomNumber(campaignDetails.options.length + 1)
   let result = {
     staker,
     campaignID,
@@ -320,7 +314,8 @@ module.exports.genVote = async (daoContract, currentBlockTime, epoch, stakers) =
     return result
   }
 
-  if (option === campaignDetails.options.length + 1) {
+  if (genRandomNumber(100) >= 95) {
+    result.option = campaignDetails.options.length + 1 + genRandomNumber(100)
     result.isValid = false
     result.msg = 'vote: option is not in range'
     return result

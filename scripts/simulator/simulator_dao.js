@@ -8,6 +8,7 @@ const {
   CAMPAIGN_TYPE_NETWORK_FEE,
   CAMPAIGN_TYPE_FEE_BRR
 } = require('./daoActionsGenerator.js')
+const { assert } = require('chai')
 
 let campaignData = {}
 let epochCampaigns = {}
@@ -84,7 +85,7 @@ module.exports.submitCampaign = function (
 }
 
 module.exports.cancelCampaign = function (campaignId) {
-  assert(campaignId in campaignData, 'campaignId not exist')
+  assert(campaignId in campaignData, 'campaignId not exits in DaoSimulator.campaignData')
   campaign = campaignData[campaignId]
   let epoch = getEpochNumber(epochPeriod, startTime, campaign.startTimestamp)
   if (campaign.campaignType == CAMPAIGN_TYPE_NETWORK_FEE) {
@@ -96,7 +97,7 @@ module.exports.cancelCampaign = function (campaignId) {
   }
 
   delete campaignData[campaignId]
-  assert(epoch in epochCampaigns, 'epochCampaigns is not exist')
+  assert(epoch in epochCampaigns, 'epoch is not exist in DaoSimulator.epochCampaigns')
   let campaignIds = epochCampaigns[epoch]
   for (let i = 0; i < campaignIds.length; i++) {
     if (campaignIds[i] == campaignId) {
@@ -115,7 +116,7 @@ module.exports.vote = function (campaignId, option, staker, totalStake, epoch) {
     }
   }
 
-  assert(campaignId in campaignData, 'campaignId is not exist')
+  assert(campaignId in campaignData, 'campaignId not exits in DaoSimulator.campaignData')
   let voteData = campaignData[campaignId].campaignVoteData
   if (lastVotedOption == undefined) {
     // increase number campaigns that the staker has voted at the current epoch
@@ -136,8 +137,8 @@ module.exports.vote = function (campaignId, option, staker, totalStake, epoch) {
   stakerVotedOption[staker][campaignId] = option
 }
 
-module.exports.getCampaignWinningOptionAndValue = function (campaignID, currentBlockTime) {
-  assert(campaignID in campaignData, 'campaignData is not exist')
+module.exports.getCampaignWinningOptionAndValue = function (campaignID) {
+  assert(campaignID in campaignData, 'campaignId not exits in DaoSimulator.campaignData')
   campaign = campaignData[campaignID]
   let totalSupply = campaign.totalKNCSupply
   Helper.assertGreater(totalSupply, new BN(0), 'zero total supply')
@@ -183,11 +184,8 @@ function addValueToDictionay (dic, key, value) {
 }
 
 function subValueToDictionay (dic, key, value) {
-  if (key in dic) {
-    dic[key] = dic[key].sub(value)
-  } else {
-    dic[key] = value
-  }
+  assert(key in dic, `not exist key=${key} dic=${dic}`)
+  dic[key] = dic[key].sub(value)
 }
 
 module.exports.handlewithdraw = function (staker, reduceAmount, epoch, currentBlockTime) {
@@ -206,7 +204,7 @@ module.exports.handlewithdraw = function (staker, reduceAmount, epoch, currentBl
 
     votedOption = stakerVotedOption[staker][campaignId]
 
-    assert(campaignId in campaignData, 'campaign not exits')
+    assert(campaignId in campaignData, 'campaignId not exits in DaoSimulator.campaignData')
     let campaign = campaignData[campaignId]
     // check if campaign has ended
     if (campaign.endTimestamp < currentBlockTime) continue
