@@ -15,7 +15,6 @@ const CAMPAIGN_TYPE_NETWORK_FEE = 1
 const CAMPAIGN_TYPE_FEE_BRR = 2
 
 const precision = new BN(10).pow(new BN(18))
-const MAX_EPOCH_CAMPAIGNS = 10
 
 const POWER_128 = new BN(2).pow(new BN(128))
 const BRR_OPTIONS = [new BN(2000), new BN(3000).mul(POWER_128), new BN(3000).mul(POWER_128).add(new BN(2000))]
@@ -110,7 +109,8 @@ module.exports.genSubmitNewCampaign = async (daoContract, epochPeriod, startTime
   }
   // check number of campaign in this epoch
   let listCampaignIDs = await daoContract.getListCampaignIDs(startEpoch)
-  if (listCampaignIDs.length == MAX_EPOCH_CAMPAIGNS) {
+  let maxCampaign = await daoContract.MAX_EPOCH_CAMPAIGNS();
+  if (listCampaignIDs.length == maxCampaign.toNumber()) {
     result.msg = 'validateParams: too many campaigns'
     result.isValid = false
     return result
