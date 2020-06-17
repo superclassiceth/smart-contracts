@@ -8,7 +8,7 @@ const {
   CAMPAIGN_TYPE_NETWORK_FEE,
   CAMPAIGN_TYPE_FEE_BRR
 } = require('./daoActionsGenerator.js')
-const { assert } = require('chai')
+const {assert} = require('chai')
 
 let campaignData = {}
 let epochCampaigns = {}

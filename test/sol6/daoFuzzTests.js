@@ -60,7 +60,7 @@ let score = {
   successCampaign: {success: 0, fail: 0}
 }
 
-contract('KyberDAO simulator', function (accounts) {
+contract('KyberDAO fuzz', function (accounts) {
   before('one time init: Stakers, KyberStaking, KNC token', async () => {
     admin = accounts[1]
     daoSetter = accounts[2]
@@ -109,7 +109,8 @@ contract('KyberDAO simulator', function (accounts) {
 
   it('fuzz testing', async () => {
     let currentEpoch = new BN(0)
-    for (let loop = 0; loop < NUM_RUNS; loop++) {
+    let loop
+    for (loop = 0; loop < NUM_RUNS; loop++) {
       let currentBlockTime = (await Helper.getCurrentBlockTime()) + 10
       let nextEpoch = DaoGenerator.getEpochNumber(epochPeriod, startTime, currentBlockTime)
       if (!nextEpoch.eq(currentEpoch)) {
@@ -117,6 +118,7 @@ contract('KyberDAO simulator', function (accounts) {
         await checkWinningCampaign(daoContract, currentBlockTime, currentEpoch)
         await checkAllStakerReward(daoContract, stakingContract, stakers, currentEpoch, false)
         currentEpoch = nextEpoch
+        if (currentEpoch.toNumber() % 5 == 0) printResult(loop)
         continue
       }
 
@@ -154,8 +156,13 @@ contract('KyberDAO simulator', function (accounts) {
           break
       }
     }
+    printResult(loop)
+  })
 
-    console.log(`--- SIM RESULTS ---`)
+  function printResult (loop) {
+    console.log(`${Helper.Color.FgRed}%s${Helper.Color.Reset}`, `--- FUZZ RESULTS ---`)
+    console.log(`Operation: ${loop}`)
+    console.log(`Do nothing: ${score.noAction.success}`)
     console.log(`Deposit: success = ${score.deposit.success}, fails = ${score.deposit.fail}`)
     console.log(`Delegate: success = ${score.delegate.success}, fails = ${score.delegate.fail}`)
     console.log(`Withdrawals: success = ${score.withdraw.success}, fails = ${score.withdraw.fail}`)
@@ -164,11 +171,11 @@ contract('KyberDAO simulator', function (accounts) {
     )
     console.log(`CancelCampaign: success = ${score.cancelCampaign.success}, fails = ${score.cancelCampaign.fail}`)
     console.log(`Vote: success = ${score.vote.success}, fails = ${score.vote.fail}`)
-    console.log(`Do nothing: success = ${score.noAction.success}, fails = ${score.noAction.fail}`)
     console.log(
       `Campaign has winning option: success = ${score.successCampaign.success}, fails = ${score.successCampaign.fail}`
     )
-  })
+    console.log(`${Helper.Color.FgRed}%s${Helper.Color.Reset}`, `--------------------`)
+  }
 
   async function deposit (currentBlockTime, epoch) {
     result = await StakeGenerator.genDeposit(kncToken, stakers)
@@ -226,7 +233,7 @@ contract('KyberDAO simulator', function (accounts) {
   }
 
   async function submitNewCampaign (currentBlockTime, epoch) {
-    result = await DaoGenerator.genSubmitNewCampaign(daoContract, epochPeriod, startTime, currentBlockTime, epoch)
+    let result = await DaoGenerator.genSubmitNewCampaign(daoContract, epochPeriod, startTime, currentBlockTime, epoch)
     if (result == undefined) return
     await Helper.setNextBlockTimestamp(currentBlockTime)
     console.log(`submit new campaign: ${result.msg}`)
@@ -313,10 +320,10 @@ contract('KyberDAO simulator', function (accounts) {
   async function checkWinningCampaign (daoContract, currentBlockTime, epoch) {
     let campaignIDs = await daoContract.getListCampaignIDs(epoch)
     if (campaignIDs.length == 0) {
-      console.log('\x1b[36m%s\x1b[0m', 'No campaign to checkWinningCampaign')
+      console.log(`${Helper.Color.FgCyan}%s${Helper.Color.Reset}`, 'No campaign to checkWinningCampaign')
       return
     }
-    console.log('\x1b[36m%s\x1b[0m', 'CheckWinningCampaign')
+    console.log(`${Helper.Color.FgCyan}%s${Helper.Color.Reset}`, 'CheckWinningCampaign')
     for (const campaignID of campaignIDs) {
       let data = await daoContract.getCampaignWinningOptionAndValue(campaignID)
       let [expectedOptionID, expectedValue, campaignType] = DaoSimulator.getCampaignWinningOptionAndValue(campaignID)
@@ -334,7 +341,10 @@ contract('KyberDAO simulator', function (accounts) {
           // Otherwise if the next epoch has no winning campaign, the change will not be recorded
           await daoContract.getLatestNetworkFeeDataWithCache()
           latestNetworkFee = expectedValue
-          console.log('\x1b[36m%s\x1b[0m', `change network fee to ${actualNetworkFeeBps.feeInBps}`)
+          console.log(
+            `${Helper.Color.FgCyan}%s${Helper.Color.Reset}`,
+            `change network fee to ${actualNetworkFeeBps.feeInBps}`
+          )
         }
       }
 
@@ -359,7 +369,10 @@ contract('KyberDAO simulator', function (accounts) {
           await daoContract.getLatestBRRDataWithCache()
           latestRewardBps = newRewardBps
           latestRebateBps = newRebateBps
-          console.log('\x1b[36m%s\x1b[0m', `change brr data to rewardBps=${newRewardBps} rebateBps=${newRebateBps}`)
+          console.log(
+            `${Helper.Color.FgCyan}%s${Helper.Color.Reset}`,
+            `change brr data to rewardBps=${newRewardBps} rebateBps=${newRebateBps}`
+          )
         }
       }
       score.successCampaign = incrementScoreCount(!data.optionID.eq(new BN(0)), score.successCampaign)
