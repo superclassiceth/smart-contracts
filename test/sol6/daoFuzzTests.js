@@ -199,12 +199,15 @@ contract('KyberDAO fuzz', function (accounts) {
     result = await StakeGenerator.genDelegate(stakers)
     console.log(result.msg)
     console.log(`Delegate: staker ${result.staker}, address: ${result.dAddress}`)
-
     await Helper.setNextBlockTimestamp(currentBlockTime)
-    await stakingContract.delegate(result.dAddress, {from: result.staker})
-    // check that delegate does not affect dao data
-    await assertEqualEpochVoteData(daoContract, epoch)
-    score.delegate = incrementScoreCount(true, score.delegate)
+    if (result.dAddress != zeroAddress) {
+      await stakingContract.delegate(result.dAddress, {from: result.staker})
+      // check that delegate does not affect dao data
+      await assertEqualEpochVoteData(daoContract, epoch)
+    } else {
+      await expectRevert(stakingContract.deposit(result.amount, {from: result.staker}), 'delegate: representative 0')
+    }
+    score.delegate = incrementScoreCount(result.dAddress != zeroAddress, score.delegate)
   }
 
   async function withdraw (currentBlockTime, epoch) {

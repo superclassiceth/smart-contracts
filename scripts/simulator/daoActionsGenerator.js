@@ -201,7 +201,7 @@ module.exports.genSubmitNewCampaign = async (daoContract, epochPeriod, startTime
     } else {
       if (lastRewardInBps.gt(new BN(7000))) {
         result.isValid = false
-        result.msg = 'validateParams: rebate + reward must be smaller then BPS'
+        result.msg = "revert validateParams: rebate + reward can't be bigger than BPS"
       } else {
         result.msg = 'create new brr campaign at epoch ' + startEpoch
       }
