@@ -177,7 +177,6 @@ module.exports.genSubmitNewCampaign = async (daoContract, epochPeriod, startTime
     result.options = [new BN(0), new BN(200), lastOption]
     campID = await daoContract.networkFeeCampaigns(startEpoch)
     if (!new BN(campID).eq(new BN(0))) {
-      console.log('already have campID ' + campID + ' for epoch' + startEpoch)
       result.isValid = false
       result.msg = 'validateParams: already had network fee campaign for this epoch'
     } else {
@@ -195,7 +194,6 @@ module.exports.genSubmitNewCampaign = async (daoContract, epochPeriod, startTime
     result.options = [new BN(2000), new BN(3000).mul(POWER_128), new BN(3000).mul(POWER_128).add(lastRewardInBps)]
 
     if (!new BN(campID).eq(new BN(0))) {
-      console.log('already have campID ' + campID + ' for epoch' + startEpoch)
       result.isValid = false
       result.msg = 'validateParams: already had brr campaign for this epoch'
     } else {
@@ -230,7 +228,6 @@ module.exports.genCancelCampaign = async (daoContract, currentBlockTime, epoch) 
   let campaigns = await daoContract.getListCampaignIDs(epoch)
   campaigns = campaigns.concat(await daoContract.getListCampaignIDs(epoch.add(new BN(1))))
   if (campaigns.length == 0) {
-    console.log(`there is no campain in epoch ${epoch} and epch ${epoch.add(new BN(1))} to cancel`)
     return undefined
   }
   let campaignID = campaigns[genRandomNumber(campaigns.length)]
@@ -271,7 +268,6 @@ module.exports.genVote = async (daoContract, currentBlockTime, epoch, stakers) =
   let campaigns = await daoContract.getListCampaignIDs(epoch)
   let staker = stakers[genRandomNumber(stakers.length)]
   if (campaigns.length == 0) {
-    console.log(`there is no campain in epoch ${epoch} to vote`)
     if (genRandomNumber(100) >= 90) {
       numCampaign = await daoContract.numberCampaigns()
       return {

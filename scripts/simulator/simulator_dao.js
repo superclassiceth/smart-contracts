@@ -144,7 +144,11 @@ module.exports.getCampaignWinningOptionAndValue = function (campaignID) {
   Helper.assertGreater(totalSupply, new BN(0), 'zero total supply')
   let totalVotes = campaign.campaignVoteData.totalVotes
   let voteCounts = campaign.campaignVoteData.votePerOption
-  console.log(`campaign ${campaignID} has totalVote=${totalVotes} voteCounts=${voteCounts} totalSuppy=${totalSupply}`)
+
+  let result = {
+    totalVotes, voteCounts, totalSupply, campaignType:campaign.campaignType, winOption: new BN(0), winValue: new BN(0)
+  }
+
   let winOption = new BN(0)
   let maxVotedCount = new BN(0)
   for (let i = 0; i < voteCounts.length; i++) {
@@ -157,22 +161,25 @@ module.exports.getCampaignWinningOptionAndValue = function (campaignID) {
   }
 
   if (winOption.eq(new BN(0))) {
-    return [new BN(0), new BN(0), campaign.campaignType]
+    return result
   }
 
   let votedPercentage = totalVotes.mul(precisionUnits).div(totalSupply)
   if (campaign.minPercentageInPrecision.gt(votedPercentage)) {
-    return [new BN(0), new BN(0), campaign.campaignType]
+    return result
   }
 
   let x = campaign.tInPrecision.mul(votedPercentage).div(precisionUnits)
   if (!x.gt(campaign.cInPrecision)) {
     let y = campaign.cInPrecision.sub(x)
     if (maxVotedCount.mul(precisionUnits).lt(y.mul(totalVotes))) {
-      return [new BN(0), new BN(0), campaign.campaignType]
+      return result
     }
   }
-  return [winOption, campaign.options[winOption.sub(new BN(1))], campaign.campaignType]
+
+  result.winOption = winOption
+  result.winValue = campaign.options[winOption.sub(new BN(1))]
+  return result
 }
 
 function addValueToDictionay (dic, key, value) {

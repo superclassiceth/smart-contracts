@@ -17,6 +17,7 @@ const {
   CAMPAIGN_TYPE_NETWORK_FEE,
   CAMPAIGN_TYPE_FEE_BRR
 } = require('../../scripts/simulator/daoActionsGenerator.js')
+const winston = require('winston')
 
 const DaoSimulator = require('../../scripts/simulator/simulator_dao.js')
 const StakeGenerator = require('../../scripts/simulator/stakingActionsGenerator.js')
@@ -59,6 +60,18 @@ let score = {
   noAction: {success: 0, fail: 0},
   successCampaign: {success: 0, fail: 0}
 }
+
+const logger = winston.createLogger({
+  level: 'debug',
+  format: winston.format.combine(winston.format.colorize(), winston.format.splat(), winston.format.simple()),
+  transports: [
+    new winston.transports.Console({level: 'verbose'}),
+    new winston.transports.File({
+      filename: 'debug.log',
+      level: 'debug'
+    })
+  ]
+})
 
 contract('KyberDAO fuzz', function (accounts) {
   before('one time init: Stakers, KyberStaking, KNC token', async () => {
@@ -146,13 +159,13 @@ contract('KyberDAO fuzz', function (accounts) {
           await checkAllStakerReward(daoContract, stakingContract, stakers, currentEpoch, true)
           break
         case NO_ACTION:
-          console.log('do nothing for this epoch...')
+          logger.debug('do nothing for this epoch...')
           // Advance time by a bit
           await Helper.mineNewBlockAt(currentBlockTime)
           score.noAction = incrementScoreCount(true, score.noAction)
           break
         default:
-          console.log('unexpected operation: ' + operation)
+          logger.debug('unexpected operation: ' + operation)
           break
       }
     }
@@ -160,28 +173,20 @@ contract('KyberDAO fuzz', function (accounts) {
   })
 
   function printResult (loop) {
-    console.log(`${Helper.Color.FgRed}%s${Helper.Color.Reset}`, `--- FUZZ RESULTS ---`)
-    console.log(`Operation: ${loop}`)
-    console.log(`Do nothing: ${score.noAction.success}`)
-    console.log(`Deposit: success = ${score.deposit.success}, fails = ${score.deposit.fail}`)
-    console.log(`Delegate: success = ${score.delegate.success}, fails = ${score.delegate.fail}`)
-    console.log(`Withdrawals: success = ${score.withdraw.success}, fails = ${score.withdraw.fail}`)
-    console.log(
-      `SubmitNewCampaign: success = ${score.submitNewCampaign.success}, fails = ${score.submitNewCampaign.fail}`
-    )
-    console.log(`CancelCampaign: success = ${score.cancelCampaign.success}, fails = ${score.cancelCampaign.fail}`)
-    console.log(`Vote: success = ${score.vote.success}, fails = ${score.vote.fail}`)
-    console.log(
-      `Campaign has winning option: success = ${score.successCampaign.success}, fails = ${score.successCampaign.fail}`
-    )
-    console.log(`${Helper.Color.FgRed}%s${Helper.Color.Reset}`, `--------------------`)
+    logger.info(`RESULTS loop=%d no-op=%d`, loop, score.noAction.success)
+    logger.info(`Deposit operatin %j`, score.deposit)
+    logger.info(`Delegate operation %j`, score.delegate)
+    logger.info(`Withdrawals operation %j`, score.withdraw)
+    logger.info(`SubmitNewCampaign operatin %j`, score.submitNewCampaign)
+    logger.info(`CancelCampaign operation %j`, score.cancelCampaign)
+    logger.info(`Vote operation %j`, score.vote)
+    logger.info(`Campaign has winning option %j`, score.successCampaign)
   }
 
   async function deposit (currentBlockTime, epoch) {
     result = await StakeGenerator.genDeposit(kncToken, stakers)
     result.delegatedAddress = await stakingContract.getLatestRepresentative(result.staker)
-    console.log(result.msg)
-    console.log(`Deposit: staker ${result.staker}, amount: ${result.amount}`)
+    logger.debug(`Deposit: %j`, result)
     await Helper.setNextBlockTimestamp(currentBlockTime)
 
     // do deposit
@@ -197,15 +202,14 @@ contract('KyberDAO fuzz', function (accounts) {
 
   async function delegate (currentBlockTime, epoch) {
     result = await StakeGenerator.genDelegate(stakers)
-    console.log(result.msg)
-    console.log(`Delegate: staker ${result.staker}, address: ${result.dAddress}`)
+    logger.debug(`Delegate: %j`, result)
     await Helper.setNextBlockTimestamp(currentBlockTime)
     if (result.dAddress != zeroAddress) {
       await stakingContract.delegate(result.dAddress, {from: result.staker})
       // check that delegate does not affect dao data
       await assertEqualEpochVoteData(daoContract, epoch)
     } else {
-      await expectRevert(stakingContract.deposit(result.amount, {from: result.staker}), 'delegate: representative 0')
+      await expectRevert(stakingContract.delegate(result.dAddress, {from: result.staker}), 'delegate: representative 0')
     }
     score.delegate = incrementScoreCount(result.dAddress != zeroAddress, score.delegate)
   }
@@ -213,8 +217,7 @@ contract('KyberDAO fuzz', function (accounts) {
   async function withdraw (currentBlockTime, epoch) {
     result = await StakeGenerator.genWithdraw(stakingContract, stakers)
     result.delegatedAddress = await stakingContract.getLatestRepresentative(result.staker)
-    console.log(result.msg)
-    console.log(`Withdrawal: staker ${result.staker}, amount: ${result.amount}`)
+    logger.debug(`Withdrawal: %j`, result)
     await Helper.setNextBlockTimestamp(currentBlockTime)
     if (result.isValid) {
       let beforeStake = await stakingContract.getStake(result.staker, epoch)
@@ -223,7 +226,11 @@ contract('KyberDAO fuzz', function (accounts) {
       // if the withdraw only change the stage for the next epoch, not the current one,
       // the vote data will be unchanged
       if (afterState.lt(beforeStake)) {
-        console.log('after stake for current epoch is smaller than before stake, handle withdrawal')
+        logger.debug('after stake for current epoch is smaller than before stake, handle withdrawal %j', {
+          staker: result.staker,
+          afterState: afterState,
+          beforeStake: beforeStake
+        })
         representative = await stakingContract.getRepresentative(result.staker, epoch)
         DaoSimulator.handlewithdraw(representative, beforeStake.sub(afterState), epoch, currentBlockTime)
       }
@@ -239,7 +246,7 @@ contract('KyberDAO fuzz', function (accounts) {
     let result = await DaoGenerator.genSubmitNewCampaign(daoContract, epochPeriod, startTime, currentBlockTime, epoch)
     if (result == undefined) return
     await Helper.setNextBlockTimestamp(currentBlockTime)
-    console.log(`submit new campaign: ${result.msg}`)
+    logger.debug(`submit new campaign: %j`, result)
     if (result.isValid) {
       await daoContract.submitNewCampaign(
         result.campaignType,
@@ -284,8 +291,11 @@ contract('KyberDAO fuzz', function (accounts) {
 
   async function cancelCampaign (currentBlockTime, epoch) {
     result = await DaoGenerator.genCancelCampaign(daoContract, currentBlockTime, epoch)
-    if (result == undefined) return
-    console.log(`cancel new campaign: ${result.msg}`)
+    if (result == undefined) {
+      logger.debug(`there is no campain in epoch %d and epoch %d to cancel`, epoch, epoch.add(new BN(1)))
+      return
+    }
+    logger.debug(`cancel new campaign: %j`, result)
     await Helper.setNextBlockTimestamp(currentBlockTime)
     if (result.isValid) {
       await daoContract.cancelCampaign(result.campaignID, {from: campCreator})
@@ -299,11 +309,12 @@ contract('KyberDAO fuzz', function (accounts) {
   async function vote (currentBlockTime, epoch) {
     result = await DaoGenerator.genVote(daoContract, currentBlockTime, epoch, stakers)
     if (result == undefined) {
+      logger.debug(`there is no campain in epoch %d to vote generate new campagin`, epoch)
       // if no campaign to vote then submit one in this iteration
       await submitNewCampaign(currentBlockTime, epoch)
       return
     }
-    console.log(`vote: ${result.msg}`)
+    logger.debug(`vote: %j`, result)
     await Helper.setNextBlockTimestamp(currentBlockTime)
     if (result.isValid) {
       await daoContract.vote(result.campaignID, result.option, {from: result.staker})
@@ -323,37 +334,35 @@ contract('KyberDAO fuzz', function (accounts) {
   async function checkWinningCampaign (daoContract, currentBlockTime, epoch) {
     let campaignIDs = await daoContract.getListCampaignIDs(epoch)
     if (campaignIDs.length == 0) {
-      console.log(`${Helper.Color.FgCyan}%s${Helper.Color.Reset}`, 'No campaign to checkWinningCampaign')
+      logger.warn('No campaign to checkWinningCampaign epoch=%d', epoch)
       return
     }
-    console.log(`${Helper.Color.FgCyan}%s${Helper.Color.Reset}`, 'CheckWinningCampaign')
+    logger.verbose('CheckWinningCampaign epoch=%d', epoch)
     for (const campaignID of campaignIDs) {
       let data = await daoContract.getCampaignWinningOptionAndValue(campaignID)
-      let [expectedOptionID, expectedValue, campaignType] = DaoSimulator.getCampaignWinningOptionAndValue(campaignID)
-      console.log(`campaign ID=${campaignID} optionID=${expectedOptionID} value=${expectedValue}`)
-      Helper.assertEqual(data.optionID, expectedOptionID, 'unexpected option ID')
-      Helper.assertEqual(data.value, expectedValue, 'unexpected option ID')
+      let expectedResult = DaoSimulator.getCampaignWinningOptionAndValue(campaignID)
+      logger.verbose(`campaignResult = %j`, expectedResult)
+      Helper.assertEqual(data.optionID, expectedResult.winOption, 'unexpected option ID')
+      Helper.assertEqual(data.value, expectedResult.winValue, 'unexpected option ID')
+      let campaignType = expectedResult.campaignType
 
       if (campaignType == CAMPAIGN_TYPE_NETWORK_FEE) {
         let actualNetworkFeeBps = await daoContract.getLatestNetworkFeeData()
-        if (expectedOptionID.eq(new BN(0))) {
+        if (data.optionID.eq(new BN(0))) {
           Helper.assertEqual(latestNetworkFee, actualNetworkFeeBps.feeInBps, 'unexpected network fee')
         } else {
-          Helper.assertEqual(expectedValue, actualNetworkFeeBps.feeInBps, 'unexpected network fee')
+          Helper.assertEqual(expectedResult.winValue, actualNetworkFeeBps.feeInBps, 'unexpected network fee')
           // pull network fee to cache
           // Otherwise if the next epoch has no winning campaign, the change will not be recorded
           await daoContract.getLatestNetworkFeeDataWithCache()
-          latestNetworkFee = expectedValue
-          console.log(
-            `${Helper.Color.FgCyan}%s${Helper.Color.Reset}`,
-            `change network fee to ${actualNetworkFeeBps.feeInBps}`
-          )
+          latestNetworkFee = data.value
+          logger.verbose(`change network fee to %d`, actualNetworkFeeBps.feeInBps)
         }
       }
 
       if (campaignType == CAMPAIGN_TYPE_FEE_BRR) {
         let actualBrrData = await daoContract.getLatestBRRData()
-        if (expectedOptionID.eq(new BN(0))) {
+        if (data.optionID.eq(new BN(0))) {
           Helper.assertEqual(latestRewardBps, actualBrrData.rewardInBps, 'unexpected rewardInBps')
           Helper.assertEqual(latestRebateBps, actualBrrData.rebateInBps, 'unexpected rebateInBps')
           Helper.assertEqual(
@@ -362,8 +371,8 @@ contract('KyberDAO fuzz', function (accounts) {
             'unexpected burnInBps'
           )
         } else {
-          let newRebateBps = expectedValue.div(POWER_128)
-          let newRewardBps = expectedValue.sub(expectedValue.div(POWER_128).mul(POWER_128))
+          let newRebateBps = data.value.div(POWER_128)
+          let newRewardBps = data.value.sub(data.value.div(POWER_128).mul(POWER_128))
           Helper.assertEqual(newRewardBps, actualBrrData.rewardInBps, 'unexpected rewardInBps')
           Helper.assertEqual(newRebateBps, actualBrrData.rebateInBps, 'unexpected rebateInBps')
           Helper.assertEqual(BPS.sub(newRewardBps).sub(newRebateBps), actualBrrData.burnInBps, 'unexpected burnInBps')
@@ -372,10 +381,7 @@ contract('KyberDAO fuzz', function (accounts) {
           await daoContract.getLatestBRRDataWithCache()
           latestRewardBps = newRewardBps
           latestRebateBps = newRebateBps
-          console.log(
-            `${Helper.Color.FgCyan}%s${Helper.Color.Reset}`,
-            `change brr data to rewardBps=${newRewardBps} rebateBps=${newRebateBps}`
-          )
+          logger.verbose(`change brr data to rewardBps=%d rebateBps=%d`, newRewardBps, newRebateBps)
         }
       }
       score.successCampaign = incrementScoreCount(!data.optionID.eq(new BN(0)), score.successCampaign)
